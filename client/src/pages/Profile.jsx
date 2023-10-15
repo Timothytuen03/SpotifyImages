@@ -140,6 +140,22 @@ const Profile = () => {
       }
     }
 
+    const handleRefresh = async () => {
+      try {
+        const res = await fetch('http://localhost:4000/api/refreshToken', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+          }
+        });
+        if(res) {
+          navigate('/');
+        }
+      } catch(err) {
+        console.log(err)
+      }
+    }
+
     
     return (
         <section className="max-w-7xl mx-auto">
@@ -147,6 +163,7 @@ const Profile = () => {
             <div className='flex'>
               <h1 className="font-extrabold text-[#ffffff] text-[32px]">{data.username}</h1>
               <button className="font-extrabold text-[#ffffff] text-[20px] ml-[15px]" onClick={() => handleLogout()}>Logout</button>
+              <button className='font-extrabold text-[#ffffff] text-[20px] ml-[15px]' onClick={() => handleRefresh()}>Refresh Token</button>
             </div>
             <p className="mt-2 text-[#666e75] text-[14px] max-w-[500px]">Blank blank blank blank</p>
             <select

@@ -1,4 +1,3 @@
-// import 'dotenv/config';
 require('dotenv').config();
 const express = require("express");
 const bodyParser = require("body-parser");
@@ -7,6 +6,7 @@ const mongoose = require("mongoose");
 const session = require("express-session");
 const cors = require("cors");
 const SpotifyStrategy = require('passport-spotify').Strategy;
+var SpotifyWebApi = require('spotify-web-api-node');
 const app = express();
 const corsOptions = { origin: [`http://localhost:5173`, `http://localhost:5173/profile`], credentials: true};
 app.use(cors(corsOptions));
@@ -22,8 +22,13 @@ app.use(session({
 }))
 app.use(passport.initialize());
 app.use(passport.session());
+var spotifyApi = new SpotifyWebApi({
+    clientId: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET
+  });
 let user_id;
-let access_token;
+let username;
+// let access_token;
 
 // MongoDB/Mongoose import and user model
 mongoose.connect(process.env.MONGODB_URI, {useNewUrlParser: true, useUnifiedTopology: true}).then(() => {
@@ -45,9 +50,11 @@ passport.use(
         callbackURL: '/auth/spotify/callback'
       },
       async function(accessToken, refreshToken, expires_in, profile, done) {
-        console.log(profile)
         user_id = profile.id;
-        access_token = accessToken;
+        username = profile.username;
+        // access_token = accessToken;
+        spotifyApi.setAccessToken(accessToken);
+        spotifyApi.setRefreshToken(refreshToken);
         let user;
 
         try {
@@ -63,7 +70,12 @@ passport.use(
                 spotify_uri: profile._json.uri,
                 access_token: accessToken
             });
-            await Info.create({ user_id: profile.id });
+            await Info.create({ 
+                user_id: profile.id,
+                top_artists: [],
+                top_songs: [],
+                playlists: []
+             });
             }
         } catch (err) {
             return done(err);
@@ -72,12 +84,6 @@ passport.use(
       }
     )
 );
-// passport.serializeUser((user, cb) => {
-//     cb(null, user);
-// });
-// passport.deserializeUser((user, cb) => {
-//     cb(null, user);
-// });
 
 passport.serializeUser((user, cb) => {
     cb(null, user.id); // Use the user ID to serialize into the session
@@ -86,25 +92,36 @@ passport.serializeUser((user, cb) => {
 passport.deserializeUser(async (id, cb) => {
     try {
         const user = await User.findById(id);
-        console.log("deserialize: " + user);
         cb(null, user); // Retrieve the user object from the database using the ID stored in the session
     } catch (err) {
         cb(err);
     }
 });
 
+
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Credentials', true);
     next();
-  });
+});
 
+app.get('/api/refreshToken', (req, res) => {
+    // clientId, clientSecret and refreshToken has been set on the api object previous to this call.
+    spotifyApi.refreshAccessToken().then(
+        function(data) {
+        console.log('The access token has been refreshed!');
+    
+        // Save the access token so that it's used in future calls
+        spotifyApi.setAccessToken(data.body['access_token']);
+        res.send(data.body)
+        },
+        function(err) {
+        console.log('Could not refresh access token', err);
+        }
+    );
+})
 
 app.get('/api/getUser', async (req, res) => {
-    console.log("request user")
-    console.log(user_id)
-    console.log(req.user)
     const userinfo = await User.find({user_id: user_id})
-    console.log(userinfo[0])
     res.send(userinfo[0]);
 })
 
@@ -114,62 +131,23 @@ app.get('/api/info', (req, res) => {
 })
 
 app.get('/auth/spotify', passport.authenticate('spotify', { 
-    scope: ['user-read-email', 'user-read-private']
+    scope: ['user-read-email', 'user-read-private', 'user-top-read', 'user-follow-read']
     })
   );
 
 app.get("/auth/spotify/callback",
     passport.authenticate("spotify", {
-        successRedirect: "http://localhost:5173/profile",
+        // successRedirect: "http://localhost:5173/profile",
         failureRedirect: "http://localhost:5173"
-    })
-    // ,
-    // (req, res) => {
-    //     console.log(req.user);
-    //     // res.send(req.user);
-    //     res.redirect("http://localhost:5173/profile")
-    // }
+    }), (req, res) => {
+        console.log("req.user")
+        console.log(req.user)
+        populateData(req.user.user_id)
+
+        res.redirect("http://localhost:5173/profile")
+    }
     );
 
-app.get("/api/spotify/getData", async (req, res) => {
-    const token = await User.findOne({user_id: user_id}).then(data => {
-        return data.access_token;
-    })
-
-    const topArtists = await fetch(`https://api.spotify.com/v1/me/top/artists?time_range=short_term&limit=10&offset=0`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    method:'GET',
-    body:JSON.stringify(body)
-  }).items;
-
-  const topSongs = await fetch(`https://api.spotify.com/v1/me/top/tracks?time_range=short_term&limit=10&offset=0`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    method:'GET',
-    body:JSON.stringify(body)
-  }).items;
-
-  const playlists = await fetch(`https://api.spotify.com/v1/me/playlists`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    method:'GET',
-    body:JSON.stringify(body)
-  }).items;
-
-  Info.findOne({user_id: req.user.id}).then(user => {
-    user.top_artists = topArtists;
-    user.top_songs = topSongs;
-    user.playlists = playlists;
-    user.save();
-  });
-
-
-//   return await res.json();
-})
 
 app.post('/logout', function(req, res, next){
     req.logout(function(err) {
@@ -200,6 +178,48 @@ app.listen(4000, (req, res) => {
 })
 
 //functions for the website
+
+const populateData = async (userId) => {
+    const topArtists = await spotifyApi.getMyTopArtists({time_range: 'long_term'})
+        .then(function(data) {
+            // topArtists = data.body.items;
+            console.log(data)
+            // console.log(topArtists);
+            return data.body.items;
+        }, function(err) {
+            console.log('Something went wrong!', err);
+        });
+
+    console.log("top songs")
+    const topSongs = await spotifyApi.getMyTopTracks({time_range: 'long_term'})
+        .then(function(data) {
+            console.log(data)
+            return data.body.items
+        }, function(err) {
+            console.log('Something went wrong!', err);
+        })
+
+    const playlists = await spotifyApi.getUserPlaylists(username)
+        .then(function(data) {
+            console.log(data)
+            return data.body.items
+        }, function(err) {
+            console.log('Something went wrong!', err);
+        })
+
+  Info.findOne({user_id: userId}).then(user => {
+    user.top_artists = topArtists;
+    user.top_songs = topSongs;
+    user.playlists = playlists;
+    user.save();
+  });
+
+
+//   return await res.json();
+}
+
+
+
 async function getAverageTrackFeatures(accessToken, playlistId) {
   const tracksEndpoint = `https://api.spotify.com/v1/playlists/${playlistId}/tracks`;
   const headers = {
