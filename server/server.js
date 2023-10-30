@@ -72,6 +72,7 @@ passport.use(
             });
             await Info.create({ 
                 user_id: profile.id,
+                username: profile.username,
                 top_artists: [],
                 top_songs: [],
                 playlists: []
@@ -121,14 +122,14 @@ app.get('/api/refreshToken', (req, res) => {
 })
 
 app.get('/api/getUser', async (req, res) => {
-    const userinfo = await User.find({user_id: user_id})
+    const userinfo = await Info.find({user_id: user_id});
     res.send(userinfo[0]);
 })
 
-app.get('/api/info', (req, res) => {
-    const information = Info.find({user_id: req.user.user_id});
-    res.send(information);
-})
+// app.get('/api/info', (req, res) => {
+//     const information = Info.find({user_id: req.user.user_id});
+//     res.send(information);
+// })
 
 app.get('/auth/spotify', passport.authenticate('spotify', { 
     scope: ['user-read-email', 'user-read-private', 'user-top-read', 'user-follow-read']
@@ -183,7 +184,7 @@ const populateData = async (userId) => {
     const topArtists = await spotifyApi.getMyTopArtists({time_range: 'long_term'})
         .then(function(data) {
             // topArtists = data.body.items;
-            console.log(data)
+            // console.log(data)
             // console.log(topArtists);
             return data.body.items;
         }, function(err) {
@@ -193,7 +194,7 @@ const populateData = async (userId) => {
     console.log("top songs")
     const topSongs = await spotifyApi.getMyTopTracks({time_range: 'long_term'})
         .then(function(data) {
-            console.log(data)
+            // console.log(data.body)
             return data.body.items
         }, function(err) {
             console.log('Something went wrong!', err);
@@ -201,7 +202,7 @@ const populateData = async (userId) => {
 
     const playlists = await spotifyApi.getUserPlaylists(username)
         .then(function(data) {
-            console.log(data)
+            // console.log(data)
             return data.body.items
         }, function(err) {
             console.log('Something went wrong!', err);

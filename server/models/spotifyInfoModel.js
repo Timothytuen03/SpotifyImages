@@ -7,6 +7,10 @@ let infoSchema = new Schema({
         type: String,
         required: true
     },
+    username: {
+        type: String,
+        required: true
+    },
     top_artists: {
         type: Array
     },

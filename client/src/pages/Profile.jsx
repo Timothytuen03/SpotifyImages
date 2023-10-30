@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import{preview} from '../assets';
 import {getRandomPrompt} from '../utils';
 import{FormField, Loader} from '../components';
+import select from 'react-select'
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -120,13 +121,6 @@ const Profile = () => {
       }
     }
 
-    const playlists = [
-      "playlist1",
-      "playlist2",
-      "playlist3",
-      "playlist4"
-    ]
-
     const fetchData = async (prompt) => {
       // prompt = category (songs, artists, etc.)
       // Get the data needed for the prompt from the backend by utilizing what prompt is entered
@@ -156,7 +150,14 @@ const Profile = () => {
       }
     }
 
-    
+    const options = [
+      { value: 'songs', label: 'Top Songs' },
+      { value: 'artists', label: 'Top Artists' }
+    ]
+    data.playlists.map((playlist_name) => (
+      options.push({ value: {playlist_name}, label: {playlist_name}})
+    ))
+
     return (
         <section className="max-w-7xl mx-auto">
           <div>
@@ -173,9 +174,6 @@ const Profile = () => {
             >
               <option value="songs">Songs</option>
               <option value="artists">Artists</option>
-              {playlists.map(name => {
-                <option value={name}>{name}</option>
-              })}
             </select>
           </div>
     
@@ -215,6 +213,12 @@ const Profile = () => {
               </button>
             </div>
           </form>
+          <div>
+            {data != '' ? data.top_songs.map((idx) => (
+              <p className='text-white'>{idx.name}</p>      
+            )) : <p></p>}
+            {/* <p>{data.top_songs[0].name}</p> */}
+          </div>
         </section>
       );
 }
